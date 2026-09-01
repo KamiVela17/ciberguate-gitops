@@ -8,6 +8,9 @@ Parameters:
     Type: AWS::EC2::Subnet::Id
   NodeSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
+  CloudFrontPrefixListId:
+    Type: String
+    Description: AWS-managed prefix list for com.amazonaws.global.cloudfront.origin-facing
   ClusterName:
     Type: String
     Default: ciberguate-eks
@@ -27,7 +30,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
@@ -171,10 +174,67 @@ Resources:
       AllocationId: !GetAtt EdgeElasticIp.AllocationId
       InstanceId: !Ref EdgeInstance
 
+  NoCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: CiberGuateNoCache
+        Comment: Disable caching for authenticated CiberGuate traffic
+        DefaultTTL: 0
+        MaxTTL: 0
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          CookiesConfig: { CookieBehavior: none }
+          HeadersConfig: { HeaderBehavior: none }
+          QueryStringsConfig: { QueryStringBehavior: none }
+
+  AllViewerOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: CiberGuateAllViewer
+        Comment: Forward authentication headers, cookies and query strings
+        CookiesConfig: { CookieBehavior: all }
+        HeadersConfig: { HeaderBehavior: allViewer }
+        QueryStringsConfig: { QueryStringBehavior: all }
+
+  PublicDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: EdgeElasticIpAssociation
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: CiberGuate public HTTPS endpoint
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: ciberguate-edge
+            DomainName: !GetAtt EdgeInstance.PublicDnsName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: ciberguate-edge
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: !Ref NoCachePolicy
+          OriginRequestPolicyId: !Ref AllViewerOriginRequestPolicy
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
 Outputs:
   PublicIp:
     Value: !Ref EdgeElasticIp
   PublicUrl:
+    Value: !Sub https://${PublicDistribution.DomainName}
+  DirectOriginUrl:
     Value: !Sub http://${EdgeElasticIp}
   InstanceId:
     Value: !Ref EdgeInstance
