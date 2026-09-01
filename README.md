@@ -20,9 +20,35 @@ commit que produjo la imagen; no se usa `latest`.
 `base/secret.template.yaml` documenta el contrato del Secret, pero no se aplica
 con Kustomize ni contiene valores reales. El workflow obtiene las credenciales
 de `ciberguate/<ambiente>/database` en AWS Secrets Manager y crea o actualiza el
-Secret `ciberguate-secrets` directamente en el namespace correspondiente.
+Secret `ciberguate-secrets` directamente en el namespace correspondiente. El
+workflow combina tres secretos por ambiente: `database`, `auth-admin` y
+`auth-signing`.
 
 Nunca agregue contraseñas reales al repositorio.
+
+Para consultar la credencial inicial de desarrollo sin copiarla al repositorio:
+
+```powershell
+aws secretsmanager get-secret-value `
+  --secret-id ciberguate/dev/auth-admin `
+  --query SecretString --output text
+```
+
+El correo inicial es `administrador@ciberguate.local`. La API firma sesiones
+Bearer con ocho horas de vigencia y protege todas las rutas `/api/v1`, excepto
+`/api/v1/auth/login`.
+
+## Acceso web
+
+El workflow usa `ClusterIP` de forma predeterminada. Para publicar NGINX con un
+NLB, configure la variable de repositorio `INGRESS_SERVICE_TYPE=LoadBalancer`.
+Si la cuenta aún no permite crear balanceadores, puede validar el portal con:
+
+```powershell
+kubectl -n ciberguate-dev port-forward service/frontend 3000:3000
+```
+
+Luego abra `http://localhost:3000`.
 
 ## Validación local
 
