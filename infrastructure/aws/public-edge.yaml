@@ -8,9 +8,6 @@ Parameters:
     Type: AWS::EC2::Subnet::Id
   NodeSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
-  CloudFrontPrefixListId:
-    Type: String
-    Description: AWS-managed prefix list for com.amazonaws.global.cloudfront.origin-facing
   ClusterName:
     Type: String
     Default: ciberguate-eks
@@ -30,7 +27,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourcePrefixListId: !Ref CloudFrontPrefixListId
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
@@ -98,7 +99,7 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -euo pipefail
-          dnf install -y nginx
+          dnf install -y nginx certbot python3-certbot-nginx
           cat > /usr/local/bin/ciberguate-refresh-upstreams <<'SCRIPT'
           #!/bin/bash
           set -euo pipefail
@@ -156,6 +157,13 @@ Resources:
           systemctl daemon-reload
           systemctl enable --now nginx ciberguate-edge.timer
           /usr/local/bin/ciberguate-refresh-upstreams
+          for attempt in {1..10}; do
+            if certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d ${EdgeElasticIp}.nip.io; then
+              break
+            fi
+            sleep 30
+          done
+          systemctl enable --now certbot-renew.timer || true
       Tags:
         - { Key: Name, Value: ciberguate-public-edge }
         - { Key: Project, Value: CiberGuate }
@@ -174,66 +182,11 @@ Resources:
       AllocationId: !GetAtt EdgeElasticIp.AllocationId
       InstanceId: !Ref EdgeInstance
 
-  NoCachePolicy:
-    Type: AWS::CloudFront::CachePolicy
-    Properties:
-      CachePolicyConfig:
-        Name: CiberGuateNoCache
-        Comment: Disable caching for authenticated CiberGuate traffic
-        DefaultTTL: 0
-        MaxTTL: 0
-        MinTTL: 0
-        ParametersInCacheKeyAndForwardedToOrigin:
-          EnableAcceptEncodingBrotli: false
-          EnableAcceptEncodingGzip: false
-          CookiesConfig: { CookieBehavior: none }
-          HeadersConfig: { HeaderBehavior: none }
-          QueryStringsConfig: { QueryStringBehavior: none }
-
-  AllViewerOriginRequestPolicy:
-    Type: AWS::CloudFront::OriginRequestPolicy
-    Properties:
-      OriginRequestPolicyConfig:
-        Name: CiberGuateAllViewer
-        Comment: Forward authentication headers, cookies and query strings
-        CookiesConfig: { CookieBehavior: all }
-        HeadersConfig: { HeaderBehavior: allViewer }
-        QueryStringsConfig: { QueryStringBehavior: all }
-
-  PublicDistribution:
-    Type: AWS::CloudFront::Distribution
-    DependsOn: EdgeElasticIpAssociation
-    Properties:
-      DistributionConfig:
-        Enabled: true
-        Comment: CiberGuate public HTTPS endpoint
-        HttpVersion: http2and3
-        IPV6Enabled: true
-        PriceClass: PriceClass_100
-        Origins:
-          - Id: ciberguate-edge
-            DomainName: !GetAtt EdgeInstance.PublicDnsName
-            CustomOriginConfig:
-              HTTPPort: 80
-              OriginProtocolPolicy: http-only
-              OriginReadTimeout: 60
-              OriginKeepaliveTimeout: 5
-        DefaultCacheBehavior:
-          TargetOriginId: ciberguate-edge
-          ViewerProtocolPolicy: redirect-to-https
-          Compress: true
-          AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
-          CachedMethods: [GET, HEAD, OPTIONS]
-          CachePolicyId: !Ref NoCachePolicy
-          OriginRequestPolicyId: !Ref AllViewerOriginRequestPolicy
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: true
-
 Outputs:
   PublicIp:
     Value: !Ref EdgeElasticIp
   PublicUrl:
-    Value: !Sub https://${PublicDistribution.DomainName}
+    Value: !Sub https://${EdgeElasticIp}.nip.io
   DirectOriginUrl:
     Value: !Sub http://${EdgeElasticIp}
   InstanceId:
