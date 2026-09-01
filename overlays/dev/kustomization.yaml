@@ -9,7 +9,7 @@ images:
     newTag: bootstrap
   - name: ciberguate-backend
     newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-backend
-    newTag: bootstrap
+    newTag: 3ae3b61fc3808712fb11e40ec95161de099d9cf3
 replicas:
   - name: frontend
     count: 1
