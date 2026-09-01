@@ -9,7 +9,7 @@ images:
     newTag: 3ad40b7b9bdc001bc33192e9a49ebf8a5028a48c
   - name: ciberguate-backend
     newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-backend
-    newTag: 3ae3b61fc3808712fb11e40ec95161de099d9cf3
+    newTag: a1ac545ecaa2cde1d4f6bf34c6edaca2860a569b
 replicas:
   - name: frontend
     count: 1
