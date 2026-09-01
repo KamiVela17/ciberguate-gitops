@@ -26,6 +26,13 @@ services:
       DATABASE_URL: postgresql://ciberguate:${POSTGRES_PASSWORD:-ciberguate_local}@postgres:5432/ciberguate
       CORS_ORIGINS: http://localhost:3000
       SEED_DATA: "true"
+      AUTOMATION_INTERVAL_MS: "60000"
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:3000/oauth/callback}
     ports:
       - "8000:8000"
     depends_on:

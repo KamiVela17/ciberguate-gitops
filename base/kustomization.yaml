@@ -14,6 +14,11 @@ configMapGenerator:
       - BACKEND_URL=http://backend:8000
       - CORS_ORIGINS=http://localhost:3000
       - SEED_DATA=true
+      - AUTOMATION_INTERVAL_MS=60000
+      - OPENAI_MODEL=gpt-5-mini
+      - OIDC_ISSUER=
+      - OIDC_CLIENT_ID=
+      - OIDC_REDIRECT_URI=
 labels:
   - pairs:
       app.kubernetes.io/part-of: ciberguate

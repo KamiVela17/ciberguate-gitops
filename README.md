@@ -1,5 +1,9 @@
 # CiberGuate GitOps
 
+La integración opcional `ciberguate/<ambiente>/integrations` en AWS Secrets
+Manager admite `OPENAI_API_KEY` y `OIDC_CLIENT_SECRET`. Su ausencia no bloquea
+el despliegue y nunca se incluyen credenciales reales en Git.
+
 Repositorio declarativo para desplegar CiberGuate IA en Amazon EKS. Las
 imágenes viven en ECR y cada despliegue usa como etiqueta el SHA completo del
 commit que produjo la imagen; no se usa `latest`.

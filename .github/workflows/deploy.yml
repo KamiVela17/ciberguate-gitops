@@ -58,12 +58,15 @@ jobs:
           SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/database" --query SecretString --output text)"
           ADMIN_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/auth-admin" --query SecretString --output text)"
           SIGNING_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/auth-signing" --query SecretString --output text)"
+          INTEGRATIONS_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/integrations" --query SecretString --output text 2>/dev/null || printf '{}')"
           DB_NAME="$(jq -r .POSTGRES_DB <<< "$SECRET_JSON")"
           DB_USER="$(jq -r .POSTGRES_USER <<< "$SECRET_JSON")"
           DB_PASSWORD="$(jq -r .POSTGRES_PASSWORD <<< "$SECRET_JSON")"
           ADMIN_EMAIL="$(jq -r .ADMIN_EMAIL <<< "$ADMIN_JSON")"
           ADMIN_PASSWORD="$(jq -r .ADMIN_PASSWORD <<< "$ADMIN_JSON")"
           JWT_SECRET="$(jq -r .JWT_SECRET <<< "$SIGNING_JSON")"
+          OPENAI_API_KEY="$(jq -r '.OPENAI_API_KEY // ""' <<< "$INTEGRATIONS_JSON")"
+          OIDC_CLIENT_SECRET="$(jq -r '.OIDC_CLIENT_SECRET // ""' <<< "$INTEGRATIONS_JSON")"
           NAMESPACE="ciberguate-$ENVIRONMENT"
           kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n "$NAMESPACE" create secret generic ciberguate-secrets \
@@ -74,6 +77,8 @@ jobs:
             --from-literal=ADMIN_EMAIL="$ADMIN_EMAIL" \
             --from-literal=ADMIN_PASSWORD="$ADMIN_PASSWORD" \
             --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
+            --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
       - name: Apply Kustomize overlay
         env:
