@@ -27,7 +27,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: environment
         shell: bash
         run: echo "name=${{ inputs.environment || 'dev' }}" >> "$GITHUB_OUTPUT"
@@ -38,10 +38,14 @@ jobs:
       - name: Configure cluster access
         run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION }}"
       - name: Ensure ingress controller
+        env:
+          # Use LoadBalancer after AWS enables ELB for the account.
+          INGRESS_SERVICE_TYPE: ${{ vars.INGRESS_SERVICE_TYPE || 'ClusterIP' }}
         run: |
           helm upgrade --install ingress-nginx ingress-nginx \
             --repo https://kubernetes.github.io/ingress-nginx \
             --namespace ingress-nginx --create-namespace \
+            --set controller.service.type="$INGRESS_SERVICE_TYPE" \
             --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
             --wait --timeout 10m
       - name: Materialize database secret from AWS Secrets Manager
