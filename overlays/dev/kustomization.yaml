@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ciberguate-dev
+resources:
+  - ../../base
+images:
+  - name: ciberguate-frontend
+    newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-frontend
+    newTag: bootstrap
+  - name: ciberguate-backend
+    newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-backend
+    newTag: bootstrap
+replicas:
+  - name: frontend
+    count: 1
+  - name: backend
+    count: 1
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: ciberguate-config
+    behavior: replace
+    literals:
+      - BACKEND_URL=http://backend:8000
+      - CORS_ORIGINS=http://localhost:3000
+      - SEED_DATA=true
+labels:
+  - pairs:
+      environment: dev

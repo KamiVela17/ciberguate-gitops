@@ -1,0 +1,75 @@
+name: Deploy to EKS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - overlays/dev/**
+      - base/**
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente que se desplegará
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: eks-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: environment
+        shell: bash
+        run: echo "name=${{ inputs.environment || 'dev' }}" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Configure cluster access
+        run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION }}"
+      - name: Ensure ingress controller
+        run: |
+          helm upgrade --install ingress-nginx ingress-nginx \
+            --repo https://kubernetes.github.io/ingress-nginx \
+            --namespace ingress-nginx --create-namespace \
+            --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+            --wait --timeout 10m
+      - name: Materialize database secret from AWS Secrets Manager
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ steps.environment.outputs.name }}
+        run: |
+          SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/database" --query SecretString --output text)"
+          DB_NAME="$(jq -r .POSTGRES_DB <<< "$SECRET_JSON")"
+          DB_USER="$(jq -r .POSTGRES_USER <<< "$SECRET_JSON")"
+          DB_PASSWORD="$(jq -r .POSTGRES_PASSWORD <<< "$SECRET_JSON")"
+          NAMESPACE="ciberguate-$ENVIRONMENT"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$NAMESPACE" create secret generic ciberguate-secrets \
+            --from-literal=POSTGRES_DB="$DB_NAME" \
+            --from-literal=POSTGRES_USER="$DB_USER" \
+            --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+            --from-literal=DATABASE_URL="postgresql://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Apply Kustomize overlay
+        env:
+          ENVIRONMENT: ${{ steps.environment.outputs.name }}
+        run: |
+          kubectl apply -k "overlays/$ENVIRONMENT"
+          kubectl -n "ciberguate-$ENVIRONMENT" rollout status statefulset/postgres --timeout=10m
+          kubectl -n "ciberguate-$ENVIRONMENT" rollout status deployment/backend --timeout=10m
+          kubectl -n "ciberguate-$ENVIRONMENT" rollout status deployment/frontend --timeout=10m
+      - name: Deployment summary
+        env:
+          ENVIRONMENT: ${{ steps.environment.outputs.name }}
+        run: kubectl -n "ciberguate-$ENVIRONMENT" get pods,svc,ingress

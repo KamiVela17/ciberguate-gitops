@@ -1,0 +1,57 @@
+name: ciberguate
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ciberguate
+      POSTGRES_USER: ciberguate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ciberguate_local}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ciberguate -d ciberguate"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    image: ciberguate-backend:1.0.0
+    build:
+      context: ../BackEnd
+    environment:
+      DATABASE_URL: postgresql://ciberguate:${POSTGRES_PASSWORD:-ciberguate_local}@postgres:5432/ciberguate
+      CORS_ORIGINS: http://localhost:3000
+      SEED_DATA: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    image: ciberguate-frontend:1.0.0
+    build:
+      context: ../FrontEnd
+      args:
+        BACKEND_URL: http://backend:8000
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

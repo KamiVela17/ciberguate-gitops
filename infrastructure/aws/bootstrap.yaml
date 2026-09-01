@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECR, GitHub OIDC roles and generated database secrets for CiberGuate.
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1]
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+
+  FrontendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: ciberguate-frontend
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Conservar las 30 imágenes más recientes","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: ciberguate-backend
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Conservar las 30 imágenes más recientes","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+
+  DevDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ciberguate/dev/database
+      Description: Credenciales PostgreSQL del ambiente dev.
+      GenerateSecretString:
+        SecretStringTemplate: '{"POSTGRES_DB":"ciberguate","POSTGRES_USER":"ciberguate"}'
+        GenerateStringKey: POSTGRES_PASSWORD
+        PasswordLength: 32
+        ExcludePunctuation: true
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+        - Key: Environment
+          Value: dev
+
+  StagingDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ciberguate/staging/database
+      Description: Credenciales PostgreSQL del ambiente staging.
+      GenerateSecretString:
+        SecretStringTemplate: '{"POSTGRES_DB":"ciberguate","POSTGRES_USER":"ciberguate"}'
+        GenerateStringKey: POSTGRES_PASSWORD
+        PasswordLength: 32
+        ExcludePunctuation: true
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+        - Key: Environment
+          Value: staging
+
+  ProdDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: ciberguate/prod/database
+      Description: Credenciales PostgreSQL del ambiente prod.
+      GenerateSecretString:
+        SecretStringTemplate: '{"POSTGRES_DB":"ciberguate","POSTGRES_USER":"ciberguate"}'
+        GenerateStringKey: POSTGRES_PASSWORD
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+        - Key: Environment
+          Value: prod
+
+  GitHubBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CiberGuateGitHubBuild
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub:
+                  - repo:KamiVela17@87462486/ciberguate-frontend@1353115499:ref:refs/heads/main
+                  - repo:KamiVela17@87462486/ciberguate-backend@1353115531:ref:refs/heads/main
+      Policies:
+        - PolicyName: PushCiberGuateImages
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource:
+                  - !GetAtt FrontendRepository.Arn
+                  - !GetAtt BackendRepository.Arn
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CiberGuateGitHubDeploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:KamiVela17@87462486/ciberguate-gitops@1353115560:ref:refs/heads/main
+      Policies:
+        - PolicyName: DeployCiberGuate
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: eks:DescribeCluster
+                Resource: !Sub arn:${AWS::Partition}:eks:${AWS::Region}:${AWS::AccountId}:cluster/ciberguate-eks
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource:
+                  - !Ref DevDatabaseSecret
+                  - !Ref StagingDatabaseSecret
+                  - !Ref ProdDatabaseSecret
+      Tags:
+        - Key: Project
+          Value: CiberGuate
+
+Outputs:
+  BuildRoleArn:
+    Value: !GetAtt GitHubBuildRole.Arn
+  DeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  FrontendRepositoryUri:
+    Value: !GetAtt FrontendRepository.RepositoryUri
+  BackendRepositoryUri:
+    Value: !GetAtt BackendRepository.RepositoryUri

@@ -1,0 +1,41 @@
+name: Promote image SHAs
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de destino
+        required: true
+        type: choice
+        options: [staging, prod]
+      frontend_sha:
+        description: SHA completo del commit frontend
+        required: true
+      backend_sha:
+        description: SHA completo del commit backend
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update immutable image identifiers
+        run: |
+          python scripts/update-image.py "${{ inputs.environment }}" ciberguate-frontend "${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com/ciberguate-frontend" "${{ inputs.frontend_sha }}"
+          python scripts/update-image.py "${{ inputs.environment }}" ciberguate-backend "${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com/ciberguate-backend" "${{ inputs.backend_sha }}"
+      - name: Commit promotion
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "overlays/${{ inputs.environment }}/kustomization.yaml"
+          git commit -m "chore(${{ inputs.environment }}): promote immutable images"
+          git push
+      - name: Start deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml -f environment="${{ inputs.environment }}"

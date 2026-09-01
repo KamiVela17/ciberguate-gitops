@@ -1,0 +1,51 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ciberguate-eks
+  region: us-east-1
+  version: "1.36"
+  tags:
+    Project: CiberGuate
+    ManagedBy: eksctl
+
+iam:
+  withOIDC: true
+
+accessConfig:
+  authenticationMode: API_AND_CONFIG_MAP
+
+autoModeConfig:
+  enabled: false
+
+vpc:
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: true
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: [api, audit, authenticator]
+
+managedNodeGroups:
+  - name: general
+    instanceTypes: [t3.medium, t3a.medium]
+    minSize: 1
+    desiredCapacity: 2
+    maxSize: 3
+    privateNetworking: true
+    volumeType: gp3
+    volumeSize: 40
+    labels:
+      workload: general
+    tags:
+      Project: CiberGuate
+      Environment: shared
+    updateConfig:
+      maxUnavailable: 1
+
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+  - name: metrics-server

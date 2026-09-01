@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - postgres.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml
+  - network-policy.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: ciberguate-config
+    literals:
+      - BACKEND_URL=http://backend:8000
+      - CORS_ORIGINS=http://localhost:3000
+      - SEED_DATA=true
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: ciberguate
+    includeSelectors: true

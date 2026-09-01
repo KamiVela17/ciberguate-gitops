@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ciberguate-staging
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: Ingress
+      name: ciberguate
+    path: ingress-host.yaml
+images:
+  - name: ciberguate-frontend
+    newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-frontend
+    newTag: bootstrap
+  - name: ciberguate-backend
+    newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-backend
+    newTag: bootstrap
+replicas:
+  - name: frontend
+    count: 2
+  - name: backend
+    count: 2
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: ciberguate-config
+    behavior: replace
+    literals:
+      - BACKEND_URL=http://backend:8000
+      - CORS_ORIGINS=https://staging.ciberguate.example.com
+      - SEED_DATA=false
+labels:
+  - pairs:
+      environment: staging
