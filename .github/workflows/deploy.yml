@@ -46,6 +46,8 @@ jobs:
             --repo https://kubernetes.github.io/ingress-nginx \
             --namespace ingress-nginx --create-namespace \
             --set controller.service.type="$INGRESS_SERVICE_TYPE" \
+            --set controller.service.nodePorts.http=30080 \
+            --set controller.service.nodePorts.https=30443 \
             --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
             --wait --timeout 10m
       - name: Materialize database secret from AWS Secrets Manager

@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Public EC2 edge with an Elastic IP forwarding HTTP to the CiberGuate EKS ingress NodePort.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+  NodeSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  ClusterName:
+    Type: String
+    Default: ciberguate-eks
+  NodePort:
+    Type: Number
+    Default: 30080
+    MinValue: 30000
+    MaxValue: 32767
+
+Resources:
+  EdgeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP access to the CiberGuate edge proxy
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - { Key: Name, Value: ciberguate-public-edge }
+        - { Key: Project, Value: CiberGuate }
+
+  AllowEdgeToNodePort:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref NodeSecurityGroupId
+      IpProtocol: tcp
+      FromPort: !Ref NodePort
+      ToPort: !Ref NodePort
+      SourceSecurityGroupId: !Ref EdgeSecurityGroup
+      Description: CiberGuate edge proxy to ingress-nginx NodePort
+
+  EdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CiberGuatePublicEdge
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: DiscoverEksNodes
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ec2:DescribeInstances
+                Resource: "*"
+      Tags:
+        - { Key: Project, Value: CiberGuate }
+
+  EdgeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref EdgeRole]
+
+  EdgeInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      InstanceType: t3.micro
+      IamInstanceProfile: !Ref EdgeInstanceProfile
+      SubnetId: !Ref PublicSubnetId
+      SecurityGroupIds: [!Ref EdgeSecurityGroup]
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 8
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          dnf install -y nginx
+          cat > /usr/local/bin/ciberguate-refresh-upstreams <<'SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+          NODE_IPS="$(aws ec2 describe-instances --region ${AWS::Region} --filters 'Name=tag:eks:cluster-name,Values=${ClusterName}' 'Name=instance-state-name,Values=running' --query 'Reservations[].Instances[].PrivateIpAddress' --output text)"
+          test -n "$NODE_IPS"
+          {
+            echo 'upstream ciberguate_eks_ingress {'
+            for node_ip in $NODE_IPS; do
+              echo "  server $node_ip:${NodePort} max_fails=3 fail_timeout=10s;"
+            done
+            echo '}'
+            cat <<'NGINX'
+          server {
+            listen 80 default_server;
+            server_name _;
+            location / {
+              proxy_pass http://ciberguate_eks_ingress;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+              proxy_connect_timeout 5s;
+              proxy_read_timeout 60s;
+            }
+          }
+          NGINX
+          } > /etc/nginx/conf.d/ciberguate.conf.new
+          mv /etc/nginx/conf.d/ciberguate.conf.new /etc/nginx/conf.d/ciberguate.conf
+          nginx -t
+          systemctl reload nginx 2>/dev/null || systemctl restart nginx
+          SCRIPT
+          chmod 750 /usr/local/bin/ciberguate-refresh-upstreams
+          cat > /etc/systemd/system/ciberguate-edge.service <<'UNIT'
+          [Unit]
+          Description=Refresh CiberGuate EKS edge upstreams
+          After=network-online.target
+          Wants=network-online.target
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/ciberguate-refresh-upstreams
+          UNIT
+          cat > /etc/systemd/system/ciberguate-edge.timer <<'UNIT'
+          [Unit]
+          Description=Refresh CiberGuate EKS edge upstreams every minute
+          [Timer]
+          OnBootSec=20s
+          OnUnitActiveSec=60s
+          Unit=ciberguate-edge.service
+          [Install]
+          WantedBy=timers.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable --now nginx ciberguate-edge.timer
+          /usr/local/bin/ciberguate-refresh-upstreams
+      Tags:
+        - { Key: Name, Value: ciberguate-public-edge }
+        - { Key: Project, Value: CiberGuate }
+
+  EdgeElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - { Key: Name, Value: ciberguate-public-edge }
+        - { Key: Project, Value: CiberGuate }
+
+  EdgeElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt EdgeElasticIp.AllocationId
+      InstanceId: !Ref EdgeInstance
+
+Outputs:
+  PublicIp:
+    Value: !Ref EdgeElasticIp
+  PublicUrl:
+    Value: !Sub http://${EdgeElasticIp}
+  InstanceId:
+    Value: !Ref EdgeInstance
