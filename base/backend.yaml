@@ -45,6 +45,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: ciberguate-config
+            - secretRef:
+                name: ciberguate-secrets
           readinessProbe:
             httpGet: { path: /health, port: http }
             initialDelaySeconds: 8

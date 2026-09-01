@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: ECR, GitHub OIDC roles and generated database secrets for CiberGuate.
+Description: ECR, GitHub OIDC roles and generated database/authentication secrets for CiberGuate.
 
 Resources:
   GitHubOidcProvider:
@@ -88,6 +88,76 @@ Resources:
         - Key: Environment
           Value: prod
 
+  DevAdminSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ciberguate/dev/auth-admin
+      GenerateSecretString:
+        SecretStringTemplate: '{"ADMIN_EMAIL":"administrador@ciberguate.local"}'
+        GenerateStringKey: ADMIN_PASSWORD
+        PasswordLength: 24
+        ExcludePunctuation: true
+      Tags: [{ Key: Project, Value: CiberGuate }, { Key: Environment, Value: dev }]
+
+  DevSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ciberguate/dev/auth-signing
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: JWT_SECRET
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags: [{ Key: Project, Value: CiberGuate }, { Key: Environment, Value: dev }]
+
+  StagingAdminSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ciberguate/staging/auth-admin
+      GenerateSecretString:
+        SecretStringTemplate: '{"ADMIN_EMAIL":"administrador@ciberguate.local"}'
+        GenerateStringKey: ADMIN_PASSWORD
+        PasswordLength: 28
+        ExcludePunctuation: true
+      Tags: [{ Key: Project, Value: CiberGuate }, { Key: Environment, Value: staging }]
+
+  StagingSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: ciberguate/staging/auth-signing
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: JWT_SECRET
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags: [{ Key: Project, Value: CiberGuate }, { Key: Environment, Value: staging }]
+
+  ProdAdminSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: ciberguate/prod/auth-admin
+      GenerateSecretString:
+        SecretStringTemplate: '{"ADMIN_EMAIL":"administrador@ciberguate.local"}'
+        GenerateStringKey: ADMIN_PASSWORD
+        PasswordLength: 32
+        ExcludePunctuation: true
+      Tags: [{ Key: Project, Value: CiberGuate }, { Key: Environment, Value: prod }]
+
+  ProdSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: ciberguate/prod/auth-signing
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: JWT_SECRET
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags: [{ Key: Project, Value: CiberGuate }, { Key: Environment, Value: prod }]
+
   GitHubBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -162,6 +232,12 @@ Resources:
                   - !Ref DevDatabaseSecret
                   - !Ref StagingDatabaseSecret
                   - !Ref ProdDatabaseSecret
+                  - !Ref DevAdminSecret
+                  - !Ref DevSigningSecret
+                  - !Ref StagingAdminSecret
+                  - !Ref StagingSigningSecret
+                  - !Ref ProdAdminSecret
+                  - !Ref ProdSigningSecret
       Tags:
         - Key: Project
           Value: CiberGuate

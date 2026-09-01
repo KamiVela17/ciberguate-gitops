@@ -54,9 +54,14 @@ jobs:
           ENVIRONMENT: ${{ steps.environment.outputs.name }}
         run: |
           SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/database" --query SecretString --output text)"
+          ADMIN_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/auth-admin" --query SecretString --output text)"
+          SIGNING_JSON="$(aws secretsmanager get-secret-value --secret-id "ciberguate/$ENVIRONMENT/auth-signing" --query SecretString --output text)"
           DB_NAME="$(jq -r .POSTGRES_DB <<< "$SECRET_JSON")"
           DB_USER="$(jq -r .POSTGRES_USER <<< "$SECRET_JSON")"
           DB_PASSWORD="$(jq -r .POSTGRES_PASSWORD <<< "$SECRET_JSON")"
+          ADMIN_EMAIL="$(jq -r .ADMIN_EMAIL <<< "$ADMIN_JSON")"
+          ADMIN_PASSWORD="$(jq -r .ADMIN_PASSWORD <<< "$ADMIN_JSON")"
+          JWT_SECRET="$(jq -r .JWT_SECRET <<< "$SIGNING_JSON")"
           NAMESPACE="ciberguate-$ENVIRONMENT"
           kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n "$NAMESPACE" create secret generic ciberguate-secrets \
@@ -64,6 +69,9 @@ jobs:
             --from-literal=POSTGRES_USER="$DB_USER" \
             --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
             --from-literal=DATABASE_URL="postgresql://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME" \
+            --from-literal=ADMIN_EMAIL="$ADMIN_EMAIL" \
+            --from-literal=ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
       - name: Apply Kustomize overlay
         env:
