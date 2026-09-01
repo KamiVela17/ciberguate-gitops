@@ -40,15 +40,18 @@ Bearer con ocho horas de vigencia y protege todas las rutas `/api/v1`, excepto
 
 ## Acceso web
 
-El workflow usa `ClusterIP` de forma predeterminada. Para publicar NGINX con un
-NLB, configure la variable de repositorio `INGRESS_SERVICE_TYPE=LoadBalancer`.
-Si la cuenta aún no permite crear balanceadores, puede validar el portal con:
+El ambiente `dev` está publicado en:
 
-```powershell
-kubectl -n ciberguate-dev port-forward service/frontend 3000:3000
-```
+[https://100.49.206.62.nip.io](https://100.49.206.62.nip.io)
 
-Luego abra `http://localhost:3000`.
+`infrastructure/aws/public-edge.yaml` crea una instancia EC2 `t3.micro`, una IP
+elástica y reglas limitadas hacia el NodePort de NGINX. Certbot instala y
+renueva automáticamente el certificado TLS. Este mecanismo evita depender de
+port-forward mientras AWS mantiene restringidos ELB y CloudFront para la
+cuenta. El enlace permanece estable mientras no se elimine la IP elástica.
+
+Cuando AWS habilite Elastic Load Balancing, puede cambiar la variable
+`INGRESS_SERVICE_TYPE` a `LoadBalancer` y retirar el stack perimetral.
 
 ## Validación local
 

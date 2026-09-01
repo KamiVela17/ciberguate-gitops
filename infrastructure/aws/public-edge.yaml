@@ -157,6 +157,8 @@ Resources:
           systemctl daemon-reload
           systemctl enable --now nginx ciberguate-edge.timer
           /usr/local/bin/ciberguate-refresh-upstreams
+          sed -i "s/server_name _;/server_name ${EdgeElasticIp}.nip.io;/" /etc/nginx/conf.d/ciberguate.conf
+          systemctl reload nginx
           for attempt in {1..10}; do
             if certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d ${EdgeElasticIp}.nip.io; then
               break
