@@ -111,7 +111,10 @@ Resources:
               echo "  server $node_ip:${NodePort} max_fails=3 fail_timeout=10s;"
             done
             echo '}'
-            cat <<'NGINX'
+          } > /etc/nginx/conf.d/ciberguate-upstream.conf.new
+          mv /etc/nginx/conf.d/ciberguate-upstream.conf.new /etc/nginx/conf.d/ciberguate-upstream.conf
+          if [ ! -f /etc/nginx/conf.d/ciberguate.conf ]; then
+            cat > /etc/nginx/conf.d/ciberguate.conf <<'NGINX'
           server {
             listen 80 default_server;
             server_name _;
@@ -129,8 +132,7 @@ Resources:
             }
           }
           NGINX
-          } > /etc/nginx/conf.d/ciberguate.conf.new
-          mv /etc/nginx/conf.d/ciberguate.conf.new /etc/nginx/conf.d/ciberguate.conf
+          fi
           nginx -t
           systemctl reload nginx 2>/dev/null || systemctl restart nginx
           SCRIPT
