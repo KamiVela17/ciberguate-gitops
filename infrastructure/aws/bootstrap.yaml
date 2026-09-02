@@ -228,6 +228,7 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                   - secretsmanager:DescribeSecret
+                  - secretsmanager:PutSecretValue
                 Resource:
                   - !Ref DevDatabaseSecret
                   - !Ref StagingDatabaseSecret
