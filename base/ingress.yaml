@@ -21,6 +21,12 @@ spec:
               service:
                 name: backend
                 port: { number: 8000 }
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port: { number: 8000 }
           - path: /
             pathType: Prefix
             backend:
