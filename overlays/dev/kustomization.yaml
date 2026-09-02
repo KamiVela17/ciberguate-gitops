@@ -6,7 +6,7 @@ resources:
 images:
   - name: ciberguate-frontend
     newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-frontend
-    newTag: e973828ca0fe81d4afdb9c4ada468caf5432359f
+    newTag: 0d5156ff190673b9e3f9859a518d326e5a28dad3
   - name: ciberguate-backend
     newName: 631412642574.dkr.ecr.us-east-1.amazonaws.com/ciberguate-backend
     newTag: 670a5ca7dfefd3e25f0d713e556e0b36d4218620
